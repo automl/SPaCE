@@ -1,0 +1,16 @@
+numpy
+gym
+gym[box2d]
+chainer
+chainerrl
+ray
+matplotlib
+pre-commit
+stable-baselines3
+stable-baselines==2.9.0
+tensorflow==1.15.0
+pybullet==2.5.6
+mpi4py==3.0.3
+git+git://github.com/benelot/pybullet-gym.git
+git+git://github.com/sholtodouglas/pointMass.git
+

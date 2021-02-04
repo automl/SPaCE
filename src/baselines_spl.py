@@ -1,20 +1,11 @@
-from gym.wrappers.resize_observation import ResizeObservation
-from gym.wrappers.gray_scale_observation import GrayScaleObservation
-#from stable_baselines3.common.env_util import make_vec_env
-#from stable_baselines3.common.vec_env import VecFrameStack
-#from stable_baselines import DDPG
-#from stable_baselines3 import PPO
 from stable_baselines.ppo2 import PPO2
 from stable_baselines.trpo_mpi import TRPO
 from stable_baselines.common.policies import MlpPolicy
-#from stable_baselines3.ppo import CnnPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines.bench import Monitor
 import tensorflow as tf
 from src.ant_goal_wrapper import AntGoalWrapper
-from src.ant_maze_wrapper import AntMazeWrapper
-#from meta_car_racing import MetaCarRacing
-#from point_mass_wrapper import PointMassWrapper, CPMWrapper
+from point_mass_wrapper import CPMWrapper
 import csv
 import json
 import numpy as np
@@ -83,12 +74,8 @@ def order_instances_relative_improvement(
 
 
 def order_instances_distance(env, num_insts):
-    if args.algo == "ddpg":
-        instances = env.get_instances()
-        indices, training_set = env.get_instance_set()
-    else:
-        instances = env.env_method("get_instances")[0]
-        indices, training_set = env.env_method("get_instance_set")[0]
+    instances = env.env_method("get_instances")[0]
+    indices, training_set = env.env_method("get_instance_set")[0]
     mean_train_instance = np.mean(training_set, axis=0)
     distances = []
     for i in range(num_insts):
@@ -105,17 +92,12 @@ def order_instances_distance(env, num_insts):
 
 def get_mean_q(model, algo):
     qs = []
-    if args.algo == "ddpg":
-        n_insts = model.env.get_instance_size()
-    else:
-        n_insts = model.env.env_method("get_instance_size")[0]
+    n_insts = model.env.env_method("get_instance_size")[0]
     env = model.env
     for i in range(n_insts):
         obs = env.reset()
         if algo == "trpo":
             val = model.policy_pi.value([obs])
-        elif algo == "ddpg":
-            val = model.policy.value(obs)
         else:
             val = model.value(obs)
         qs.append(val)
@@ -176,13 +158,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("Ray Ape-X RR/CL/SPL")
     parser.add_argument(
         "--env",
-        choices=["meta-car", "pointmass-gate", "ant-goal"],
+        choices=["pointmass-gate", "ant-goal"],
         default="pointmass-gate",
         help="Environment to run",
     )
     parser.add_argument(
         "--algo",
-        choices=["trpo", "ppo", "ddpg"],
+        choices=["trpo", "ppo"],
         default="trpo",
         help="Training algorithm",
     )
@@ -197,7 +179,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--mode",
-        choices=["rr", "cl", "spl", "greedy-opt"],
+        choices=["rr", "cl", "spl"],
         default="spl",
         help=" ",
     )
@@ -289,6 +271,7 @@ if __name__ == "__main__":
         policy_args = dict(layers=[21], act_fun=tf.tanh)
     else:
         policy_args = dict(act_fun=tf.tanh)
+
     # Parameters from Klink et.al.
     parameters = dict(
         common=dict(
@@ -317,9 +300,6 @@ if __name__ == "__main__":
         model = TRPO(
             MlpPolicy, env, **parameters["common"], **parameters["trpo"]
         )
-    elif args.algo == "ddpg":
-        from stable_baselines.ddpg.policies import MlpPolicy as DDPGPolicy
-        model = DDPG(DDPGPolicy, env)
     else:
         env = DummyVecEnv([lambda: env])
         model = PPO2(MlpPolicy, env, **parameters["common"], **parameters["ppo"])
@@ -328,137 +308,24 @@ if __name__ == "__main__":
     eval_hook(model, eval_env, total_steps, outdir, "eval")
     eval_hook(model, test_env, total_steps, outdir, "test")
     if args.warmup:
-        if args.algo == "ddpg":
-            cur_set, _ = model.env.get_instance_set()
-            model.env.set_instance_set(np.arange(eval_env.get_instance_size()))
-        else:
-            cur_set, _ = model.env.env_method("get_instance_set")
-            model.env.env_method(
-                "set_instance_set", np.arange(eval_env.get_instance_size())
-                )
+        cur_set, _ = model.env.env_method("get_instance_set")
+        model.env.env_method(
+            "set_instance_set", np.arange(eval_env.get_instance_size())
+            )
         model.learn(total_timesteps=args.warmup, reset_num_timesteps=False)
         total_steps += args.warmup
-        if args.algo == "ddpg":
-            model.env.set_instance_set(cur_set)
-        else:
-            model.env.env_method("set_instance_set", cur_set)
+        model.env.env_method("set_instance_set", cur_set)
         eval_hook(model, eval_env, steps, outdir, "eval")
         eval_hook(model, test_env, steps, outdir, "test")
 
     set_factor = args.setfactor
     delta_q = -np.inf
     last_q = 0
-    if args.algo == "ddpg":
-        n_instances = model.env.get_instance_size()
-    else:
-        n_instances = model.env.env_method("get_instance_size")[0]
+    n_instances = model.env.env_method("get_instance_size")[0]
     training_steps = n_instances * set_factor
     eval_factor = 1
     total_instances = eval_env.get_feats()
     last_evals = np.zeros(n_instances)
-    optimal_distance_schedule = [
-        8,
-        53,
-        1,
-        64,
-        77,
-        19,
-        76,
-        46,
-        18,
-        65,
-        25,
-        68,
-        9,
-        0,
-        50,
-        62,
-        55,
-        7,
-        71,
-        54,
-        28,
-        96,
-        42,
-        73,
-        60,
-        59,
-        90,
-        49,
-        23,
-        45,
-        22,
-        13,
-        61,
-        72,
-        80,
-        33,
-        51,
-        81,
-        14,
-        47,
-        11,
-        94,
-        10,
-        87,
-        27,
-        75,
-        86,
-        34,
-        91,
-        95,
-        97,
-        40,
-        30,
-        48,
-        52,
-        67,
-        38,
-        6,
-        24,
-        93,
-        92,
-        84,
-        32,
-        88,
-        79,
-        82,
-        70,
-        74,
-        89,
-        98,
-        35,
-        5,
-        4,
-        36,
-        78,
-        3,
-        15,
-        17,
-        26,
-        63,
-        39,
-        99,
-        66,
-        20,
-        2,
-        85,
-        57,
-        16,
-        44,
-        83,
-        69,
-        43,
-        37,
-        31,
-        29,
-        21,
-        41,
-        56,
-        12,
-        58,
-    ]
-    optimal_distance_schedule = [40, 22, 25, 43, 63, 94, 48, 87, 79, 15, 9, 5, 53, 58, 32, 39, 36, 64, 86, 49, 0, 85, 98, 96, 99, 77, 67, 1, 55, 50, 92, 37, 52, 88, 4, 46, 42, 54, 34, 28, 6, 70, 61, 41, 8, 24, 72, 23, 60, 68, 26, 45, 56, 81, 11, 89, 51, 27, 31, 12, 71, 44, 13, 93, 62, 2, 18, 84, 59, 75, 20, 83, 3, 19, 97, 21, 47, 14, 35, 90, 38, 29, 66, 65, 74, 82, 78, 17, 57, 80, 30, 73, 76, 10, 69, 7, 95, 33, 91, 16]
     for i in range(20000):
         print(f"This is iteration {i}")
         if args.steps == "fixed" or args.mode == "rr":
@@ -480,21 +347,15 @@ if __name__ == "__main__":
                 and n_instances < total_instances
             ):
                 print("Increasing instance set size")
-                if args.algo == "ddpg":
-                    model.env.increase_set_size(args.kappa, args.multi)
-                    n_instances = model.env.get_instance_size()
-                else:
-                    model.env.env_method(
-                        "increase_set_size", args.kappa, args.multi
-                        )
-                    n_instances = model.env.env_method("get_instance_size")[0]
+                model.env.env_method(
+                    "increase_set_size", args.kappa, args.multi
+                    )
+                n_instances = model.env.env_method("get_instance_size")[0]
             if args.mode == "cl":
                 indices = order_instances_distance(
                     env, eval_env.get_instance_size()
                 )
                 print(indices)
-            elif args.mode == "greedy-opt":
-                indices = optimal_distance_schedule
             elif args.spl_mode == "absolute":
                 indices = order_instances_qvals(
                     model, eval_env, eval_env.get_instance_size(), args.algo
@@ -515,10 +376,8 @@ if __name__ == "__main__":
                     args.algo,
                     last_evals,
                 )
-            if args.algo == "ddpg":
-                model.env.set_instance_set(indices)
-            else:
-                model.env.env_method("set_instance_set", indices)
+
+            model.env.env_method("set_instance_set", indices)
             with open(
                 os.path.join(outdir, f"instance_curriculum.txt"), "a"
             ) as fh:
@@ -526,8 +385,6 @@ if __name__ == "__main__":
             with open(os.path.join(outdir, f"curriculum_size.txt"), "a") as fh:
                 fh.writelines(f"{n_instances}\n")
 
-        # if i >= args.eval * eval_factor:
         print("Evaluating")
-        # eval_factor += 1
         eval_hook(model, eval_env, total_steps, outdir, "eval")
         eval_hook(model, test_env, total_steps, outdir, "test")

@@ -1,12 +1,9 @@
 numpy
 gym
-gym[box2d]
-chainer
-chainerrl
-ray
+pytorch
+tensorflow
 matplotlib
 pre-commit
-stable-baselines3
 stable-baselines==2.9.0
 tensorflow==1.15.0
 pybullet==2.5.6

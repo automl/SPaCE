@@ -82,7 +82,7 @@ def order_instances_distance(env, num_insts):
         distances.append(
             np.mean(
                 np.abs(
-                    np.array(normalize_pm(instances[i]))
+                    np.array(instances[i])
                     - np.array(mean_train_instance)
                 )
             )

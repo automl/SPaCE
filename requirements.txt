@@ -1,7 +1,6 @@
 numpy
 gym
-pytorch
-tensorflow
+torch
 matplotlib
 pre-commit
 stable-baselines==2.9.0
